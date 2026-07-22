@@ -1,5 +1,5 @@
 FROM python:3.13-slim-bookworm AS base
-ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PIP_DISABLE_PIP_VERSION_CHECK=1
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PIP_DISABLE_PIP_VERSION_CHECK=1 PYTHONPATH=/app
 RUN apt-get update \
  && apt-get install -y --no-install-recommends postgresql-client openssh-client \
  && rm -rf /var/lib/apt/lists/* \
@@ -20,4 +20,3 @@ RUN pip install --no-cache-dir -r requirements-test.txt
 USER 10001:10001
 
 FROM base AS final
-

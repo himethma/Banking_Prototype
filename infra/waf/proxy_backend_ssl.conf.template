@@ -1,0 +1,8 @@
+proxy_ssl_certificate /certs/waf-client.crt;
+proxy_ssl_certificate_key /certs/waf-client.key;
+proxy_ssl_trusted_certificate /certs/ca.crt;
+proxy_ssl_protocols TLSv1.3;
+proxy_ssl_verify on;
+proxy_ssl_verify_depth 2;
+proxy_ssl_server_name on;
+proxy_ssl_name frontend;

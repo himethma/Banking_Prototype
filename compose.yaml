@@ -11,7 +11,6 @@ x-backend: &backend
   <<: *hardened
   build:
     context: ./backend
-  image: secure-bank-backend:local
   read_only: true
   tmpfs:
     - /tmp:size=64m,mode=1777
@@ -137,9 +136,9 @@ services:
       KC_PROXY_HEADERS: xforwarded
       KC_HEALTH_ENABLED: "true"
       KC_METRICS_ENABLED: "true"
+      KC_CACHE: local
     volumes:
-      - keycloak_data:/opt/keycloak/data
-      - bootstrap:/opt/keycloak/data/import:ro
+      - bootstrap:/bootstrap:ro
       - certs:/certs:ro
       - secrets:/run/secrets:ro
     depends_on:
@@ -267,6 +266,7 @@ services:
 
   api-a:
     <<: *backend
+    image: secure-bank-api-a:local
     hostname: api-a
     environment:
       <<: *backend-env
@@ -275,6 +275,7 @@ services:
 
   api-b:
     <<: *backend
+    image: secure-bank-api-b:local
     hostname: api-b
     environment:
       <<: *backend-env
@@ -303,7 +304,7 @@ services:
       - app
 
   waf:
-    image: owasp/modsecurity-crs:4.25-apache-lts
+    image: owasp/modsecurity-crs:4.25-nginx-alpine-lts
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
@@ -315,7 +316,7 @@ services:
       SSL_PROTOCOLS: TLSv1.3
       SSL_CERT_FILE: /certs/gateway.crt
       SSL_CERT_KEY_FILE: /certs/gateway.key
-      APACHE_ALWAYS_TLS_REDIRECT: "on"
+      NGINX_ALWAYS_TLS_REDIRECT: "on"
       MODSEC_RULE_ENGINE: "On"
       BLOCKING_PARANOIA: "1"
       DETECTION_PARANOIA: "2"
@@ -323,11 +324,6 @@ services:
       ANOMALY_OUTBOUND: "4"
       MODSEC_AUDIT_ENGINE: RelevantOnly
       PROXY_SSL: "on"
-      PROXY_SSL_VERIFY: require
-      PROXY_SSL_CA_CERT_FILE: /certs/ca.crt
-      PROXY_SSL_CERT_FILE: /certs/waf-client.crt
-      PROXY_SSL_CERT_KEY_FILE: /certs/waf-client.key
-      PROXY_SSL_CHECK_PEER_NAME: "on"
       PROXY_SSL_PROTOCOLS: TLSv1.3
       ALLOWED_METHODS: GET HEAD POST PUT OPTIONS
       MAX_NUM_ARGS: "128"
@@ -341,6 +337,7 @@ services:
       - ${PUBLIC_HTTPS_PORT:-8443}:8443
     volumes:
       - certs:/certs:ro
+      - ./infra/waf/proxy_backend_ssl.conf.template:/etc/nginx/templates/includes/proxy_backend_ssl.conf.template:ro
     depends_on:
       frontend:
         condition: service_healthy
@@ -370,7 +367,7 @@ services:
   sftp-primary:
     build:
       context: ./infra/ssh
-    image: secure-bank-ssh:local
+    image: secure-bank-sftp-primary:local
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
@@ -387,7 +384,9 @@ services:
       - management
 
   sftp-dr:
-    image: secure-bank-ssh:local
+    build:
+      context: ./infra/ssh
+    image: secure-bank-sftp-dr:local
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
@@ -403,7 +402,9 @@ services:
       - backup
 
   bastion:
-    image: secure-bank-ssh:local
+    build:
+      context: ./infra/ssh
+    image: secure-bank-bastion:local
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
@@ -422,6 +423,9 @@ services:
 
   backup-scheduler:
     <<: *backend
+    image: secure-bank-backup-scheduler:local
+    healthcheck:
+      disable: true
     command: [python, -m, app.backup, schedule]
     depends_on:
       db:
@@ -442,6 +446,9 @@ services:
 
   restore-check:
     <<: *backend
+    image: secure-bank-restore-check:local
+    healthcheck:
+      disable: true
     profiles: [restore]
     command: [python, -m, app.backup, restore-check]
     depends_on:
@@ -510,7 +517,6 @@ services:
 
 volumes:
   postgres_data:
-  keycloak_data:
   certs:
   secrets:
   bootstrap:

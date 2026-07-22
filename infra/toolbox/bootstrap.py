@@ -67,6 +67,14 @@ def create_ca() -> tuple[ec.EllipticCurvePrivateKey, x509.Certificate]:
         .not_valid_after(now + timedelta(days=3650))
         .add_extension(x509.BasicConstraints(ca=True, path_length=1), critical=True)
         .add_extension(
+            x509.SubjectKeyIdentifier.from_public_key(key.public_key()),
+            critical=False,
+        )
+        .add_extension(
+            x509.AuthorityKeyIdentifier.from_issuer_public_key(key.public_key()),
+            critical=False,
+        )
+        .add_extension(
             x509.KeyUsage(
                 digital_signature=True,
                 content_commitment=False,
@@ -112,6 +120,14 @@ def create_leaf(
         .not_valid_before(now - timedelta(minutes=5))
         .not_valid_after(now + timedelta(days=825))
         .add_extension(x509.BasicConstraints(ca=False, path_length=None), critical=True)
+        .add_extension(
+            x509.SubjectKeyIdentifier.from_public_key(key.public_key()),
+            critical=False,
+        )
+        .add_extension(
+            x509.AuthorityKeyIdentifier.from_issuer_public_key(ca_key.public_key()),
+            critical=False,
+        )
         .add_extension(x509.SubjectAlternativeName(sans), critical=False)
         .add_extension(
             x509.ExtendedKeyUsage(
@@ -180,7 +196,7 @@ def build_realm(credentials: dict[str, str], ids: dict[str, str]) -> dict:
         "otpPolicyAlgorithm": "HmacSHA256",
         "otpPolicyDigits": 6,
         "otpPolicyPeriod": 30,
-        "passwordPolicy": "hashAlgorithm(argon2)|length(12)|digits(1)|upperCase(1)|lowerCase(1)",
+        "passwordPolicy": "length(12) and digits(1) and upperCase(1) and lowerCase(1)",
         "defaultSignatureAlgorithm": "ES384",
         "accessTokenLifespan": 300,
         "ssoSessionIdleTimeout": 1800,
@@ -386,6 +402,18 @@ def export_ca() -> None:
     print("Exported .local/secure-bank-ca.crt")
 
 
+def refresh_realm() -> None:
+    realm_path = BOOTSTRAP / "secure-bank-realm.json"
+    if not realm_path.exists():
+        raise SystemExit("Run setup first.")
+    realm = json.loads(realm_path.read_text())
+    realm["passwordPolicy"] = (
+        "length(12) and digits(1) and upperCase(1) and lowerCase(1)"
+    )
+    atomic_write(realm_path, json.dumps(realm, indent=2).encode())
+    print("Refreshed Keycloak realm bootstrap configuration.")
+
+
 def tls_probe(host: str, port: int, minimum: ssl.TLSVersion, maximum: ssl.TLSVersion, with_client: bool = False) -> str:
     context = ssl.create_default_context(cafile=str(CERTS / "ca.crt"))
     context.minimum_version = minimum
@@ -463,6 +491,8 @@ def main() -> None:
     command = sys.argv[1] if len(sys.argv) > 1 else "setup"
     if command == "setup":
         setup()
+    elif command == "refresh-realm":
+        refresh_realm()
     elif command == "export-ca":
         export_ca()
     elif command == "protocol-check":
