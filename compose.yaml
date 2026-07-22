@@ -1,0 +1,538 @@
+name: secure-bank
+
+x-hardened: &hardened
+  restart: unless-stopped
+  security_opt:
+    - no-new-privileges:true
+  cap_drop:
+    - ALL
+
+x-backend: &backend
+  <<: *hardened
+  build:
+    context: ./backend
+  image: secure-bank-backend:local
+  read_only: true
+  tmpfs:
+    - /tmp:size=64m,mode=1777
+  volumes:
+    - certs:/certs:ro
+    - secrets:/run/secrets:ro
+    - bootstrap:/bootstrap:ro
+  environment: &backend-env
+    DATABASE_URL_FILE: /run/secrets/app_database_url
+    KEYCLOAK_ISSUER: https://localhost:8443/auth/realms/secure-bank
+    KEYCLOAK_JWKS_URL: https://keycloak:8443/auth/realms/secure-bank/protocol/openid-connect/certs
+    KEYCLOAK_CA_FILE: /certs/ca.crt
+    KEY_SERVICE_URL: https://key-service:8443
+    AUDIT_SERVICE_URL: https://audit-service:8443
+    MONITOR_SERVICE_URL: https://monitor:8443
+    CLIENT_CERT_FILE: /certs/api.crt
+    CLIENT_KEY_FILE: /certs/api.key
+    INTERNAL_CA_FILE: /certs/ca.crt
+    SMTP_HOST: mailpit
+    SMTP_PORT: "1025"
+    SMTP_CA_FILE: /certs/ca.crt
+    PUBLIC_ORIGIN: https://localhost:8443
+    TRANSFER_LIMIT_MINOR: "10000000"
+    DAILY_LIMIT_MINOR: "25000000"
+    DB_ADMIN_PASSWORD_FILE: /run/secrets/db_admin_password
+  healthcheck:
+    test: [CMD, python, -m, app.healthcheck]
+    interval: 5s
+    timeout: 5s
+    retries: 30
+  depends_on:
+    db:
+      condition: service_healthy
+    keycloak:
+      condition: service_started
+    key-service:
+      condition: service_healthy
+    audit-service:
+      condition: service_healthy
+    monitor:
+      condition: service_healthy
+  networks:
+    - app
+    - data
+    - audit
+
+services:
+  toolbox:
+    build:
+      context: ./infra/toolbox
+    image: secure-bank-toolbox:local
+    profiles: [tools]
+    volumes:
+      - certs:/certs
+      - secrets:/run/secrets
+      - bootstrap:/bootstrap
+      - ./.local:/output
+    networks:
+      - management
+      - edge
+      - app
+      - data
+      - audit
+      - backup
+
+  db:
+    image: postgres:15-bookworm
+    restart: unless-stopped
+    cap_drop: [ALL]
+    cap_add: [CHOWN, DAC_OVERRIDE, FOWNER, SETGID, SETUID]
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      POSTGRES_USER: banking_root
+      POSTGRES_DB: banking
+      POSTGRES_PASSWORD_FILE: /run/secrets/db_admin_password
+    command:
+      - postgres
+      - -c
+      - ssl=on
+      - -c
+      - ssl_cert_file=/certs/db.crt
+      - -c
+      - ssl_key_file=/certs/db.key
+      - -c
+      - ssl_ca_file=/certs/ca.crt
+      - -c
+      - password_encryption=scram-sha-256
+      - -c
+      - hba_file=/etc/postgresql/pg_hba.conf
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - certs:/certs:ro
+      - secrets:/run/secrets:ro
+      - ./infra/postgres/init.sh:/docker-entrypoint-initdb.d/10-init.sh:ro
+      - ./infra/postgres/pg_hba.conf:/etc/postgresql/pg_hba.conf:ro
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U banking_root -d banking"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    networks:
+      - data
+
+  keycloak:
+    build:
+      context: ./infra/keycloak
+    image: secure-bank-keycloak:local
+    restart: unless-stopped
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://db:5432/keycloak?sslmode=verify-full&sslrootcert=/certs/ca.crt
+      KC_DB_USERNAME: keycloak
+      KC_DB_PASSWORD_FILE: /run/secrets/keycloak_db_password
+      KC_HOSTNAME: https://localhost:8443/auth
+      KC_HTTP_RELATIVE_PATH: /auth
+      KC_HTTP_ENABLED: "false"
+      KC_HTTPS_CERTIFICATE_FILE: /certs/keycloak.crt
+      KC_HTTPS_CERTIFICATE_KEY_FILE: /certs/keycloak.key
+      KC_PROXY_HEADERS: xforwarded
+      KC_HEALTH_ENABLED: "true"
+      KC_METRICS_ENABLED: "true"
+    volumes:
+      - keycloak_data:/opt/keycloak/data
+      - bootstrap:/opt/keycloak/data/import:ro
+      - certs:/certs:ro
+      - secrets:/run/secrets:ro
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - app
+      - data
+
+  key-service:
+    <<: *hardened
+    build:
+      context: ./services/key_service
+    image: secure-bank-key-service:local
+    read_only: true
+    tmpfs:
+      - /tmp:size=32m,mode=1777
+    volumes:
+      - certs:/certs:ro
+      - secrets:/run/secrets:ro
+    command:
+      - uvicorn
+      - app:app
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8443"
+      - --ssl-keyfile
+      - /certs/key-service.key
+      - --ssl-certfile
+      - /certs/key-service.crt
+      - --ssl-ca-certs
+      - /certs/ca.crt
+      - --ssl-cert-reqs
+      - "2"
+    healthcheck:
+      test: [CMD, python, /app/healthcheck.py, https://key-service:8443/healthz, /certs/key-service.crt, /certs/key-service.key, /certs/ca.crt]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    networks:
+      - app
+      - audit
+
+  audit-service:
+    <<: *hardened
+    build:
+      context: ./services/audit_service
+    image: secure-bank-audit-service:local
+    read_only: true
+    tmpfs:
+      - /tmp:size=32m,mode=1777
+    volumes:
+      - certs:/certs:ro
+      - audit_data:/data
+    environment:
+      KEY_SERVICE_URL: https://key-service:8443
+      CLIENT_CERT_FILE: /certs/audit.crt
+      CLIENT_KEY_FILE: /certs/audit.key
+      CA_FILE: /certs/ca.crt
+    command:
+      - uvicorn
+      - app:app
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8443"
+      - --ssl-keyfile
+      - /certs/audit.key
+      - --ssl-certfile
+      - /certs/audit.crt
+      - --ssl-ca-certs
+      - /certs/ca.crt
+      - --ssl-cert-reqs
+      - "2"
+    depends_on:
+      key-service:
+        condition: service_healthy
+    healthcheck:
+      test: [CMD, python, /app/healthcheck.py, https://audit-service:8443/healthz, /certs/audit.crt, /certs/audit.key, /certs/ca.crt]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    networks:
+      - audit
+
+  monitor:
+    <<: *hardened
+    build:
+      context: ./services/monitor
+    image: secure-bank-monitor:local
+    read_only: true
+    tmpfs:
+      - /tmp:size=32m,mode=1777
+    volumes:
+      - certs:/certs:ro
+      - monitor_data:/data
+    environment:
+      SMTP_HOST: mailpit
+      SMTP_PORT: "1025"
+      SMTP_CA_FILE: /certs/ca.crt
+    command:
+      - uvicorn
+      - app:app
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8443"
+      - --ssl-keyfile
+      - /certs/monitor.key
+      - --ssl-certfile
+      - /certs/monitor.crt
+      - --ssl-ca-certs
+      - /certs/ca.crt
+      - --ssl-cert-reqs
+      - "2"
+    healthcheck:
+      test: [CMD, python, /app/healthcheck.py, https://monitor:8443/healthz, /certs/monitor.crt, /certs/monitor.key, /certs/ca.crt]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    networks:
+      - audit
+      - management
+
+  api-a:
+    <<: *backend
+    hostname: api-a
+    environment:
+      <<: *backend-env
+      INSTANCE_NAME: api-a
+    command: [python, -m, app.serve]
+
+  api-b:
+    <<: *backend
+    hostname: api-b
+    environment:
+      <<: *backend-env
+      INSTANCE_NAME: api-b
+    command: [python, -m, app.serve]
+
+  frontend:
+    <<: *hardened
+    build:
+      context: ./frontend
+    image: secure-bank-frontend:local
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m
+    volumes:
+      - certs:/certs:ro
+    depends_on:
+      api-a:
+        condition: service_healthy
+      api-b:
+        condition: service_healthy
+      keycloak:
+        condition: service_started
+    networks:
+      - dmz
+      - app
+
+  waf:
+    image: owasp/modsecurity-crs:4.25-apache-lts
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      BACKEND: https://frontend:8443
+      SERVER_NAME: localhost
+      PORT: "8080"
+      SSL_PORT: "8443"
+      SSL_PROTOCOLS: TLSv1.3
+      SSL_CERT_FILE: /certs/gateway.crt
+      SSL_CERT_KEY_FILE: /certs/gateway.key
+      APACHE_ALWAYS_TLS_REDIRECT: "on"
+      MODSEC_RULE_ENGINE: "On"
+      BLOCKING_PARANOIA: "1"
+      DETECTION_PARANOIA: "2"
+      ANOMALY_INBOUND: "5"
+      ANOMALY_OUTBOUND: "4"
+      MODSEC_AUDIT_ENGINE: RelevantOnly
+      PROXY_SSL: "on"
+      PROXY_SSL_VERIFY: require
+      PROXY_SSL_CA_CERT_FILE: /certs/ca.crt
+      PROXY_SSL_CERT_FILE: /certs/waf-client.crt
+      PROXY_SSL_CERT_KEY_FILE: /certs/waf-client.key
+      PROXY_SSL_CHECK_PEER_NAME: "on"
+      PROXY_SSL_PROTOCOLS: TLSv1.3
+      ALLOWED_METHODS: GET HEAD POST PUT OPTIONS
+      MAX_NUM_ARGS: "128"
+      ARG_NAME_LENGTH: "80"
+      ARG_LENGTH: "4096"
+      TOTAL_ARG_LENGTH: "16384"
+      MAX_FILE_SIZE: "5242880"
+      COMBINED_FILE_SIZES: "5242880"
+    ports:
+      - 127.0.0.1:${PUBLIC_HTTP_PORT:-8080}:8080
+      - ${PUBLIC_HTTPS_PORT:-8443}:8443
+    volumes:
+      - certs:/certs:ro
+    depends_on:
+      frontend:
+        condition: service_healthy
+    networks:
+      - edge
+      - dmz
+
+  mailpit:
+    image: axllent/mailpit:v1.27
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      MP_SMTP_BIND_ADDR: 0.0.0.0:1025
+      MP_UI_BIND_ADDR: 0.0.0.0:8025
+      MP_SMTP_TLS_CERT: /certs/mail.crt
+      MP_SMTP_TLS_KEY: /certs/mail.key
+      MP_SMTP_REQUIRE_STARTTLS: "true"
+    ports:
+      - 127.0.0.1:${MAIL_UI_PORT:-8025}:8025
+    volumes:
+      - certs:/certs:ro
+    networks:
+      - app
+      - management
+
+  sftp-primary:
+    build:
+      context: ./infra/ssh
+    image: secure-bank-ssh:local
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      SSH_MODE: sftp
+      SSH_USER: backup
+    ports:
+      - 127.0.0.1:${SFTP_PORT:-2222}:2222
+    volumes:
+      - bootstrap:/bootstrap:ro
+      - backup_primary:/srv/storage
+    networks:
+      - backup
+      - management
+
+  sftp-dr:
+    image: secure-bank-ssh:local
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      SSH_MODE: sftp
+      SSH_USER: backup
+    ports:
+      - 127.0.0.1:${DR_SFTP_PORT:-2224}:2222
+    volumes:
+      - bootstrap:/bootstrap:ro
+      - backup_dr:/srv/storage
+    networks:
+      - backup
+
+  bastion:
+    image: secure-bank-ssh:local
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      SSH_MODE: bastion
+      SSH_USER: administrator
+    ports:
+      - 127.0.0.1:${BASTION_PORT:-2223}:2222
+    volumes:
+      - bootstrap:/bootstrap:ro
+      - bastion_logs:/var/log/bastion
+    networks:
+      - management
+      - app
+      - data
+
+  backup-scheduler:
+    <<: *backend
+    command: [python, -m, app.backup, schedule]
+    depends_on:
+      db:
+        condition: service_healthy
+      key-service:
+        condition: service_healthy
+      api-a:
+        condition: service_healthy
+      sftp-primary:
+        condition: service_started
+      sftp-dr:
+        condition: service_started
+    networks:
+      - data
+      - app
+      - audit
+      - backup
+
+  restore-check:
+    <<: *backend
+    profiles: [restore]
+    command: [python, -m, app.backup, restore-check]
+    depends_on:
+      db:
+        condition: service_healthy
+      key-service:
+        condition: service_healthy
+      api-a:
+        condition: service_healthy
+      sftp-primary:
+        condition: service_started
+    networks:
+      - data
+      - app
+      - audit
+      - backup
+
+  vulnerable-lab:
+    build:
+      context: ./lab/vulnerable
+    image: secure-bank-vulnerable-lab:local
+    profiles: [lab]
+    restart: "no"
+    security_opt:
+      - no-new-privileges:true
+    ports:
+      - 127.0.0.1:8081:8081
+    networks:
+      - lab
+
+  attack-runner:
+    build:
+      context: ./lab/attack_runner
+    image: secure-bank-attack-runner:local
+    profiles: [lab]
+    environment:
+      SECURE_URL: https://waf:8443
+      VULNERABLE_URL: http://vulnerable-lab:8081
+      CA_FILE: /certs/ca.crt
+    volumes:
+      - certs:/certs:ro
+      - lab_results:/results
+    depends_on:
+      vulnerable-lab:
+        condition: service_started
+      waf:
+        condition: service_started
+    networks:
+      - edge
+      - lab
+
+  test-runner:
+    build:
+      context: ./backend
+      target: test
+    image: secure-bank-tests:local
+    profiles: [tools]
+    command: [pytest, -q, --disable-warnings]
+    volumes:
+      - certs:/certs:ro
+      - secrets:/run/secrets:ro
+    networks:
+      - app
+      - data
+      - audit
+
+volumes:
+  postgres_data:
+  keycloak_data:
+  certs:
+  secrets:
+  bootstrap:
+  audit_data:
+  monitor_data:
+  backup_primary:
+  backup_dr:
+  bastion_logs:
+  lab_results:
+
+networks:
+  edge:
+  dmz:
+    internal: true
+  app:
+    internal: true
+  data:
+    internal: true
+  audit:
+    internal: true
+  backup:
+    internal: true
+  management:
+  lab:
+    internal: true

@@ -1,0 +1,17 @@
+.env
+.local/
+node_modules/
+dist/
+__pycache__/
+.pytest_cache/
+.mypy_cache/
+.coverage
+coverage.xml
+playwright-report/
+test-results/
+*.pyc
+*.pyo
+*.log
+.DS_Store
+Thumbs.db
+
