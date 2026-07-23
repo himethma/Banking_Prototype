@@ -339,10 +339,6 @@ export default function App({ keycloak }: Props) {
                   <button className="primary" disabled={busy}>{busy ? <RefreshCw className="spin" /> : <ArrowRight />} Prepare and verify</button>
                 </form>
               </article>
-              <article className="panel evidence">
-                <div className="panel-title"><div><p className="eyebrow">LIVE EVIDENCE</p><h2>Your protection</h2></div><FileKey /></div>
-                {["Argon2id password + prototype console OTP", "AES-256-GCM encrypted customer data", "ES384 signed tokens and receipts", "Idempotent, row-locked transfers", "Immutable SHA-256 audit chain"].map((item) => <div className="evidence-row" key={item}><BadgeCheck />{item}</div>)}
-              </article>
             </section>
           </>
         )}
@@ -358,9 +354,7 @@ export default function App({ keycloak }: Props) {
             </section>
             <section className="content-grid admin-grid">
               <article className="panel"><div className="panel-title"><div><p className="eyebrow">IDS / SIEM</p><h2>Correlated alerts</h2></div><button className="icon" onClick={load}><RefreshCw /></button></div><div className="alert-list">{alerts.length === 0 ? <div className="empty">No correlated alerts yet. Run the isolated attack lab to generate evidence.</div> : alerts.map((alert) => <div className="alert-row" key={alert.id}><span className={`severity ${alert.severity}`}>{alert.severity}</span><div><strong>{alert.title}</strong><small>{alert.actor} · {new Date(alert.created_at).toLocaleString()}</small></div></div>)}</div></article>
-              <article className="panel"><div className="panel-title"><div><p className="eyebrow">TRUST CONTROLS</p><h2>Implementation coverage</h2></div><ShieldCheck /></div>{controls && ["algorithm", "protocol", "system"].map((group) => <div className="control-group" key={group}><h3>{group}</h3>{controls[group].map((item: string) => <div className="evidence-row" key={item}><BadgeCheck />{item}</div>)}</div>)}</article>
             </section>
-            <section className="panel lab-panel"><div><p className="eyebrow">ISOLATED SECURITY LAB</p><h2>Secure versus vulnerable evidence</h2><p>The lab is disabled in normal operation and uses a separate network, synthetic database, and no banking secrets.</p></div><code>docker compose --profile lab run --rm attack-runner</code></section>
 
             <section className="detail-grid">
               <article className="panel">
