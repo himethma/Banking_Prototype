@@ -28,7 +28,7 @@ No host installation of Python, Node.js, Java, PostgreSQL, or OpenSSL is require
 The commands are identical in PowerShell and macOS Terminal:
 
 ```text
-docker compose run --rm toolbox setup
+docker compose run --rm --build toolbox setup
 docker compose up --build -d
 docker compose ps
 ```

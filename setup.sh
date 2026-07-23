@@ -1,4 +1,4 @@
 #!/bin/sh
 set -eu
-docker compose run --rm toolbox setup
+docker compose run --rm --build toolbox setup
 
