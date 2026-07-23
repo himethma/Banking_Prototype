@@ -329,7 +329,7 @@ export default function App({ keycloak }: Props) {
               <article className="assurance-card"><ShieldCheck /><div><strong>Protected end to end</strong><span>AES-256-GCM at rest, TLS 1.3 in transit, signed audit evidence.</span></div></article>
             </section>
             <section className="content-grid">
-              <article className="panel">
+              <article className="panel" style={{ gridColumn: "1 / -1" }}>
                 <div className="panel-title"><div><p className="eyebrow">PAYMENTS</p><h2>Make a secure transfer</h2></div><Banknote /></div>
                 <form onSubmit={beginTransfer}>
                   <label>From<input value={accounts[0]?.masked_account_number ?? "Loading account…"} disabled /></label>
@@ -353,7 +353,7 @@ export default function App({ keycloak }: Props) {
               <article><FileKey /><span>Encrypted backups</span><strong>{backups.length}</strong></article>
             </section>
             <section className="content-grid admin-grid">
-              <article className="panel"><div className="panel-title"><div><p className="eyebrow">IDS / SIEM</p><h2>Correlated alerts</h2></div><button className="icon" onClick={load}><RefreshCw /></button></div><div className="alert-list">{alerts.length === 0 ? <div className="empty">No correlated alerts yet. Run the isolated attack lab to generate evidence.</div> : alerts.map((alert) => <div className="alert-row" key={alert.id}><span className={`severity ${alert.severity}`}>{alert.severity}</span><div><strong>{alert.title}</strong><small>{alert.actor} · {new Date(alert.created_at).toLocaleString()}</small></div></div>)}</div></article>
+              <article className="panel" style={{ gridColumn: "1 / -1" }}><div className="panel-title"><div><p className="eyebrow">IDS / SIEM</p><h2>Correlated alerts</h2></div><button className="icon" onClick={load}><RefreshCw /></button></div><div className="alert-list">{alerts.length === 0 ? <div className="empty">No correlated alerts yet. Run the isolated attack lab to generate evidence.</div> : alerts.map((alert) => <div className="alert-row" key={alert.id}><span className={`severity ${alert.severity}`}>{alert.severity}</span><div><strong>{alert.title}</strong><small>{alert.actor} · {new Date(alert.created_at).toLocaleString()}</small></div></div>)}</div></article>
             </section>
 
             <section className="detail-grid">
