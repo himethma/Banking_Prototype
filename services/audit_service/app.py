@@ -5,6 +5,7 @@ import hashlib
 import json
 import os
 import sqlite3
+import ssl
 import threading
 import uuid
 from datetime import UTC, datetime
@@ -17,8 +18,9 @@ from pydantic import BaseModel
 
 DB_PATH = Path("/data/audit.db")
 KEY_SERVICE_URL = os.environ["KEY_SERVICE_URL"]
-CERT = (os.environ["CLIENT_CERT_FILE"], os.environ["CLIENT_KEY_FILE"])
-VERIFY = os.environ["CA_FILE"]
+CLIENT_CERT = os.environ["CLIENT_CERT_FILE"]
+CLIENT_KEY = os.environ["CLIENT_KEY_FILE"]
+CA_FILE = os.environ["CA_FILE"]
 LOCK = threading.Lock()
 app = FastAPI(title="Immutable Audit Service", docs_url=None, redoc_url=None)
 
@@ -62,8 +64,14 @@ def canonical(value: dict) -> bytes:
     return json.dumps(value, sort_keys=True, separators=(",", ":")).encode()
 
 
+def tls_context() -> ssl.SSLContext:
+    context = ssl.create_default_context(cafile=CA_FILE)
+    context.load_cert_chain(CLIENT_CERT, CLIENT_KEY)
+    return context
+
+
 def kms_post(path: str, payload: dict) -> dict:
-    with httpx.Client(cert=CERT, verify=VERIFY, timeout=5) as client:
+    with httpx.Client(verify=tls_context(), timeout=5) as client:
         response = client.post(KEY_SERVICE_URL + path, json=payload)
         response.raise_for_status()
         return response.json()
