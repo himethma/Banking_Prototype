@@ -250,7 +250,10 @@ def build_realm(credentials: dict[str, str], ids: dict[str, str]) -> dict:
                         },
                     }
                 ],
-                "defaultClientScopes": ["web-origins", "acr", "roles", "profile", "email"],
+                # Keycloak 26 supplies the stable subject (`sub`) mapper through
+                # the built-in basic scope. The API requires that identifier
+                # for ownership and audit decisions.
+                "defaultClientScopes": ["basic", "web-origins", "acr", "roles", "profile", "email"],
             }
         ],
         "users": users,

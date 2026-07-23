@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import ssl
 import time
 from dataclasses import dataclass
@@ -15,6 +16,7 @@ from .config import get_settings
 
 
 settings = get_settings()
+logger = logging.getLogger("secure_bank.security")
 bearer = HTTPBearer(auto_error=False)
 _jwks: dict = {}
 _jwks_loaded_at = 0.0
@@ -77,7 +79,8 @@ async def current_principal(
         raise HTTPException(401, "Bearer token required", headers={"WWW-Authenticate": "Bearer"})
     try:
         claims = await decode_token(credentials.credentials)
-    except Exception:
+    except Exception as exc:
+        logger.warning("Access-token validation failed: %s: %s", type(exc).__name__, exc)
         await security_event("token.invalid", source_ip=request.client.host if request.client else "unknown")
         raise HTTPException(401, "Invalid or expired access token", headers={"WWW-Authenticate": "Bearer"})
     roles = frozenset(claims.get("realm_access", {}).get("roles", []))
@@ -103,4 +106,3 @@ def require_role(role: str):
 
 Customer = Annotated[Principal, Depends(require_role("customer"))]
 SecurityAdmin = Annotated[Principal, Depends(require_role("security-admin"))]
-
