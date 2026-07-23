@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import type Keycloak from "keycloak-js";
 import {
   Activity,
@@ -43,10 +43,52 @@ export default function App({ keycloak }: Props) {
   const [destination, setDestination] = useState("100000000002");
   const [amount, setAmount] = useState("1000.00");
   const [description, setDescription] = useState("Secure prototype transfer");
+  const [demoOtp, setDemoOtp] = useState("");
+  const [demoOtpInput, setDemoOtpInput] = useState("");
+  const [demoOtpExpiresAt, setDemoOtpExpiresAt] = useState(0);
+  const [demoOtpVerified, setDemoOtpVerified] = useState(false);
+  const [demoOtpError, setDemoOtpError] = useState("");
+  const demoOtpIssued = useRef(false);
 
   const roles = useMemo(() => new Set(keycloak.realmAccess?.roles ?? []), [keycloak.realmAccess]);
   const isCustomer = roles.has("customer");
   const isAdmin = roles.has("security-admin");
+
+  const issueDemoOtp = useCallback(() => {
+    const randomValue = crypto.getRandomValues(new Uint32Array(1))[0] % 1_000_000;
+    const code = randomValue.toString().padStart(6, "0");
+    const expiresAt = Date.now() + 2 * 60 * 1000;
+    setDemoOtp(code);
+    setDemoOtpExpiresAt(expiresAt);
+    setDemoOtpInput("");
+    setDemoOtpError("");
+    console.log(
+      `%c[Secure Bank prototype] One-time code: ${code} (expires in 2 minutes)`,
+      "color: #5de2b6; font-size: 16px; font-weight: bold",
+    );
+  }, []);
+
+  useEffect(() => {
+    if (!keycloak.authenticated || demoOtpVerified || demoOtpIssued.current) return;
+    demoOtpIssued.current = true;
+    issueDemoOtp();
+  }, [demoOtpVerified, issueDemoOtp, keycloak.authenticated]);
+
+  function verifyDemoOtp(event: FormEvent) {
+    event.preventDefault();
+    if (!demoOtp || Date.now() > demoOtpExpiresAt) {
+      setDemoOtpError("That code has expired. Generate a new demonstration code.");
+      return;
+    }
+    if (demoOtpInput.trim() !== demoOtp) {
+      setDemoOtpError("The demonstration code is incorrect.");
+      return;
+    }
+    setDemoOtpVerified(true);
+    setDemoOtp("");
+    setDemoOtpInput("");
+    setDemoOtpError("");
+  }
 
   const api = useCallback(
     async (path: string, init: RequestInit = {}) => {
@@ -69,7 +111,7 @@ export default function App({ keycloak }: Props) {
   );
 
   const load = useCallback(async () => {
-    if (!keycloak.authenticated) return;
+    if (!keycloak.authenticated || !demoOtpVerified) return;
     try {
       const me = await api("/api/v1/me");
       setProfile(me);
@@ -89,13 +131,13 @@ export default function App({ keycloak }: Props) {
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Unable to load dashboard");
     }
-  }, [api, isAdmin, isCustomer, keycloak.authenticated]);
+  }, [api, demoOtpVerified, isAdmin, isCustomer, keycloak.authenticated]);
 
   useEffect(() => void load(), [load]);
 
   useEffect(() => {
     const preparationId = new URLSearchParams(window.location.search).get("commit");
-    if (!preparationId || !keycloak.authenticated || !isCustomer) return;
+    if (!preparationId || !keycloak.authenticated || !demoOtpVerified || !isCustomer) return;
     window.history.replaceState({}, "", "/");
     setBusy(true);
     api("/api/v1/transfers/commit", {
@@ -109,7 +151,7 @@ export default function App({ keycloak }: Props) {
       })
       .catch((reason) => setError(reason.message))
       .finally(() => setBusy(false));
-  }, [api, isCustomer, keycloak.authenticated, load]);
+  }, [api, demoOtpVerified, isCustomer, keycloak.authenticated, load]);
 
   async function beginTransfer(event: FormEvent) {
     event.preventDefault();
@@ -145,9 +187,41 @@ export default function App({ keycloak }: Props) {
           <div className="brand-mark"><ShieldCheck size={34} /></div>
           <p className="eyebrow">SECURE BANKING LAB</p>
           <h1>Banking built around trust boundaries.</h1>
-          <p className="lead">Sign in through OpenID Connect with PKCE, an Argon2id password, and TOTP multi-factor authentication.</p>
+          <p className="lead">Sign in through OpenID Connect with PKCE and an Argon2id-protected password. A demonstration code is issued after login.</p>
           <button className="primary" onClick={() => keycloak.login()}><Fingerprint size={19} /> Secure sign in</button>
           <div className="trust-row"><span>TLS 1.3</span><span>ES384</span><span>OWASP CRS</span></div>
+        </section>
+      </main>
+    );
+  }
+
+  if (!demoOtpVerified) {
+    return (
+      <main className="login-shell">
+        <section className="login-card">
+          <div className="brand-mark"><Fingerprint size={34} /></div>
+          <p className="eyebrow">PROTOTYPE VERIFICATION</p>
+          <h1>Enter the demonstration code.</h1>
+          <p className="lead">Open the browser developer tools and select <strong>Console</strong>. Copy the six-digit Secure Bank prototype code printed there.</p>
+          {demoOtpError && <div className="notice error">{demoOtpError}</div>}
+          <form onSubmit={verifyDemoOtp}>
+            <label htmlFor="demo-otp">One-time code
+              <input
+                id="demo-otp"
+                value={demoOtpInput}
+                onChange={(event) => setDemoOtpInput(event.target.value.replace(/\D/g, "").slice(0, 6))}
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                pattern="[0-9]{6}"
+                maxLength={6}
+                required
+                autoFocus
+              />
+            </label>
+            <button className="primary" type="submit"><ShieldCheck size={19} /> Verify code</button>
+            <button className="secondary" type="button" onClick={issueDemoOtp}>Generate a new code</button>
+          </form>
+          <p className="prototype-warning">Demonstration only: the browser generates and verifies this code. Production systems must use a server-side or hardware-backed second factor.</p>
         </section>
       </main>
     );
@@ -180,13 +254,13 @@ export default function App({ keycloak }: Props) {
                   <label>From<input value={accounts[0]?.masked_account_number ?? "Loading account…"} disabled /></label>
                   <label>Destination account<input value={destination} onChange={(e) => setDestination(e.target.value)} inputMode="numeric" required /></label>
                   <div className="field-row"><label>Amount (LKR)<input value={amount} onChange={(e) => setAmount(e.target.value)} inputMode="decimal" required /></label><label>Reference<input value={description} onChange={(e) => setDescription(e.target.value)} maxLength={140} /></label></div>
-                  <div className="step-up"><Fingerprint /><span><strong>MFA confirmation required</strong>You will re-authenticate before balances change.</span></div>
+                  <div className="step-up"><Fingerprint /><span><strong>Fresh authentication required</strong>You will re-enter your password before balances change.</span></div>
                   <button className="primary" disabled={busy}>{busy ? <RefreshCw className="spin" /> : <ArrowRight />} Prepare and verify</button>
                 </form>
               </article>
               <article className="panel evidence">
                 <div className="panel-title"><div><p className="eyebrow">LIVE EVIDENCE</p><h2>Your protection</h2></div><FileKey /></div>
-                {["Argon2id password + TOTP MFA", "AES-256-GCM encrypted customer data", "ES384 signed tokens and receipts", "Idempotent, row-locked transfers", "Immutable SHA-256 audit chain"].map((item) => <div className="evidence-row" key={item}><BadgeCheck />{item}</div>)}
+                {["Argon2id password + prototype console OTP", "AES-256-GCM encrypted customer data", "ES384 signed tokens and receipts", "Idempotent, row-locked transfers", "Immutable SHA-256 audit chain"].map((item) => <div className="evidence-row" key={item}><BadgeCheck />{item}</div>)}
               </article>
             </section>
           </>

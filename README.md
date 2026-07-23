@@ -7,8 +7,8 @@ The project is intended for coursework demonstration only. It does not connect t
 ## What is implemented
 
 - React customer and security-administrator dashboards.
-- Keycloak OpenID Connect Authorization Code + PKCE login, Argon2id password policy, TOTP MFA, RBAC, lockout controls, and ES384 tokens.
-- FastAPI banking service with LKR minor units, row-locked ACID transfers, ownership checks, limits, recent-MFA confirmation, and idempotency.
+- Keycloak OpenID Connect Authorization Code + PKCE login, Argon2id password policy, RBAC, lockout controls, and ES384 tokens, followed by a clearly labelled browser-console OTP demonstration.
+- FastAPI banking service with LKR minor units, row-locked ACID transfers, ownership checks, limits, recent password re-authentication, and idempotency.
 - AES-256-GCM encrypted PII, descriptions, statements, and backups through a private key-management boundary.
 - ECDSA P-384 signed receipts, backup manifests, and SHA-256 hash-chained audit records.
 - TLS 1.3 through OWASP CRS, internal mTLS, PostgreSQL TLS, SMTP STARTTLS, and SFTP with Ed25519 keys.
@@ -41,7 +41,7 @@ Randomized demo passwords are written to `.local/demo-credentials.txt`. The avai
 - `bob` - customer with account `100000000002`.
 - `security-admin` - read-only security operations role.
 
-Every user must enroll a TOTP authenticator on first login. Customer transfers force a fresh Keycloak login and TOTP verification before commit.
+After password login, the browser prints a short-lived demonstration OTP to its developer console and asks the user to copy it into the application. This client-side code is intentionally prototype-only and is not a production MFA control. Customer transfers still force a fresh Keycloak password login before commit.
 
 ### Trust the local CA
 
@@ -100,7 +100,7 @@ docker compose --profile restore run --rm restore-check
 flowchart TD
   Browser[Customer or security-admin browser] -->|TLS 1.3| WAF[OWASP CRS / ModSecurity WAF]
   WAF -->|mTLS| Web[React router and load balancer]
-  Web -->|TLS| KC[Keycloak OIDC + TOTP]
+  Web -->|TLS| KC[Keycloak OIDC + Argon2id]
   Web -->|mTLS| A[FastAPI replica A]
   Web -->|mTLS| B[FastAPI replica B]
   A & B -->|TLS verify-full| DB[(PostgreSQL)]
@@ -132,4 +132,3 @@ To completely reset all synthetic data, keys, credentials, TOTP enrollments, aud
 - IDS/SIEM rules correlate application and security events; the prototype does not mirror raw network packets.
 - Primary and DR backups use separate restricted stores on one Docker host, not geographically separate facilities.
 - Mailpit receives only synthetic local mail. SFTP stores only encrypted synthetic statements/backups.
-

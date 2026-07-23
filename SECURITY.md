@@ -11,7 +11,7 @@ The percentages in the assignment are marking weights, not implementation alloca
 | Password hashing | Keycloak password policy uses Argon2id | Offline cracking and credential compromise | Realm bootstrap configuration and first-login test |
 | Asymmetric signing | ES384/P-384 for Keycloak tokens, receipts, audit entries, and manifests | Token/receipt forgery and repudiation | Signature and tamper unit tests; receipt verification endpoint |
 | Hashing | SHA-256 audit chain and backup ciphertext digest | Log or backup modification | Admin audit verifier and restore check |
-| MFA | RFC 6238-style TOTP enrollment and forced recent re-authentication | Stolen passwords and unauthorized transfers | Keycloak first login plus prepare/re-authenticate/commit flow |
+| Prototype OTP flow | A random six-digit code is generated and verified by the browser after Keycloak login; transfers separately force recent password re-authentication | Demonstrates an OTP user journey only; it does **not** mitigate a compromised browser or access token | Browser console message, verification screen, and prepare/re-authenticate/commit flow |
 | Envelope backup encryption | Unique AES-256-GCM data key wrapped by the key service | Backup theft and master-key exposure | `restore-check` verifies signature, hash, wrap and GCM tag |
 
 Cryptographic code uses `cryptography`, PyJWT, and Keycloak rather than custom primitives. Encryption operations bind ciphertext to a record-specific associated-data value, so copying ciphertext between records fails authentication.
@@ -67,4 +67,3 @@ The administrator role can acknowledge alerts but cannot view decrypted PII or m
 ## Limitations
 
 The controls demonstrate the architecture without claiming physical infrastructure. Hardware HSM certification, enterprise NGFW functions, packet-mirroring NIDS, IPsec remote-access infrastructure, immutable cloud object locks, multi-region recovery, certificate revocation services, and externally trusted certificates belong in a production deployment.
-

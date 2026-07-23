@@ -7,14 +7,14 @@ This sequence fits a concise coursework presentation while showing working evide
 1. Run `docker compose ps` and show that only WAF, loopback mail/SFTP/bastion, and the intended services are exposed.
 2. Open `https://localhost:8443` and point out TLS 1.3 and the locally trusted P-384 certificate.
 3. Sign in as `alice` using the randomized password from `.local/demo-credentials.txt`.
-4. Enroll TOTP when Keycloak requires it. Explain Authorization Code + PKCE and that password/TOTP verification occurs at the identity provider.
+4. After the Keycloak password login, open the browser console, copy the printed six-digit demonstration code, and enter it in the application. Explain that this is an intentionally simplified prototype step, not production MFA.
 
 ## 2. Complete a protected transfer
 
 1. Show Alice's synthetic balance and account number.
 2. Transfer LKR 1,000.00 to Bob's account `100000000002`.
 3. Explain that preparation validates ownership, balance, daily/per-transfer limits, and creates a five-minute request hash.
-4. Complete the forced password/TOTP re-authentication.
+4. Complete the forced password re-authentication.
 5. Show the completed transfer reference and explain row locks, ACID balance updates, and the idempotency key.
 6. Explain that the description is AES-256-GCM encrypted and the receipt is ECDSA P-384 signed.
 
@@ -40,7 +40,7 @@ Highlight successful TLS 1.3, rejected TLS 1.2, rejected anonymous key-service a
 
 ## 5. Show monitoring and audit evidence
 
-1. Sign out and sign in as `security-admin` with TOTP.
+1. Sign out and sign in as `security-admin`, then complete the browser-console OTP demonstration.
 2. Show the IDS/SIEM totals and audit-chain status.
 3. Show the control inventory and honest prototype limitations.
 4. Verify that this role has no customer transfer interface.
@@ -66,4 +66,3 @@ docker compose --profile restore run --rm restore-check
 Explain the signed manifest, SHA-256 ciphertext digest, wrapped AES data key, GCM authentication tag, primary/DR SFTP copies, and disposable restore validation.
 
 Finish by stating that the 40/30/30 values are marking weights: every security layer has an implemented control, a negative test, and visible evidence.
-

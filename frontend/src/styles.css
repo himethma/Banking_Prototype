@@ -29,6 +29,10 @@ h1 { font-size: clamp(2.15rem, 5vw, 4.5rem); line-height: 1.02; letter-spacing: 
 .primary:hover { background: #7aebc7; transform: translateY(-1px); }
 .primary:disabled { opacity: .55; cursor: wait; }
 .login-card .primary { width: 100%; margin-top: 20px; }
+.secondary { border: 1px solid var(--line); border-radius: 13px; padding: 12px 18px; background: transparent; color: var(--muted); font-weight: 650; }
+.secondary:hover { color: var(--mint); border-color: rgba(93,226,182,.4); }
+.login-card .secondary { width: 100%; }
+.prototype-warning { color: var(--amber); border-top: 1px solid var(--line); margin: 24px 0 0; padding-top: 18px; font-size: .76rem; line-height: 1.55; }
 .trust-row { display: flex; gap: 10px; margin-top: 25px; flex-wrap: wrap; }
 .trust-row span { border: 1px solid var(--line); color: var(--muted); border-radius: 99px; padding: 6px 11px; font-size: .75rem; }
 

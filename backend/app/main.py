@@ -306,7 +306,7 @@ async def prepare_transfer(
         "preparation_id": str(preparation.id),
         "request_hash": digest,
         "expires_at": preparation.expires_at,
-        "requires_recent_mfa": True,
+        "requires_recent_authentication": True,
     }
 
 
@@ -318,7 +318,7 @@ async def commit_transfer(
     idempotency_key: Annotated[str, Header(alias="Idempotency-Key", min_length=16, max_length=128)],
 ) -> dict:
     if int(time.time()) - customer.auth_time > 120:
-        raise HTTPException(401, "Recent MFA authentication is required")
+        raise HTTPException(401, "Recent authentication is required")
     await session.execute(
         text("SELECT pg_advisory_xact_lock(hashtext(:lock_key))"),
         {"lock_key": customer.subject + ":" + idempotency_key},

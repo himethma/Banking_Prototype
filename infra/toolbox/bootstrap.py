@@ -176,7 +176,7 @@ def build_realm(credentials: dict[str, str], ids: dict[str, str]) -> dict:
                 "email": f"{username}@secure-bank.test",
                 "emailVerified": True,
                 "enabled": True,
-                "requiredActions": ["CONFIGURE_TOTP"],
+                "requiredActions": [],
                 "credentials": [
                     {
                         "type": "password",
@@ -393,7 +393,7 @@ def setup() -> None:
     credential_text = [
         "SECURE BANK - LOCAL DEMO CREDENTIALS",
         "Generated: " + datetime.now(UTC).isoformat(),
-        "All users must enroll a TOTP authenticator on first login.",
+        "After password login, the prototype prints a demonstration OTP in the browser console.",
         "",
     ]
     credential_text.extend(f"{name}: {value}" for name, value in credentials.items())
