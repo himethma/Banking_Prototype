@@ -338,6 +338,7 @@ services:
     volumes:
       - certs:/certs:ro
       - ./infra/waf/proxy_backend_ssl.conf.template:/etc/nginx/templates/includes/proxy_backend_ssl.conf.template:ro
+      - ./infra/waf/RESPONSE-999-EXCLUSION-RULES-AFTER-CRS.conf:/etc/modsecurity.d/owasp-crs/rules/RESPONSE-999-EXCLUSION-RULES-AFTER-CRS.conf:ro
     depends_on:
       frontend:
         condition: service_healthy
