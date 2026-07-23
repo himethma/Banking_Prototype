@@ -14,6 +14,28 @@ import {
   Siren,
   UserRound,
 } from "lucide-react";
+import {
+  logApiRequest,
+  logApiResponse,
+  logAuditIntegrity,
+  logBackupStatus,
+  logBanner,
+  logDemoOtp,
+  logDemoOtpVerified,
+  logEncryptionEvidence,
+  logHashChainEvidence,
+  logJwtToken,
+  logNetworkSegmentation,
+  logOidcFlow,
+  logProfileDecryption,
+  logRbac,
+  logSignatureEvidence,
+  logSiemLoad,
+  logTlsConnection,
+  logTransferCommit,
+  logTransferPrepare,
+  logWafBlock,
+} from "./securityConsole";
 
 type Account = {
   id: string;
@@ -49,6 +71,7 @@ export default function App({ keycloak }: Props) {
   const [demoOtpVerified, setDemoOtpVerified] = useState(false);
   const [demoOtpError, setDemoOtpError] = useState("");
   const demoOtpIssued = useRef(false);
+  const sessionLogged = useRef(false);
 
   const roles = useMemo(() => new Set(keycloak.realmAccess?.roles ?? []), [keycloak.realmAccess]);
   const isCustomer = roles.has("customer");
@@ -62,10 +85,7 @@ export default function App({ keycloak }: Props) {
     setDemoOtpExpiresAt(expiresAt);
     setDemoOtpInput("");
     setDemoOtpError("");
-    console.log(
-      `%c[Secure Bank prototype] One-time code: ${code} (expires in 2 minutes)`,
-      "color: #5de2b6; font-size: 16px; font-weight: bold",
-    );
+    logDemoOtp(code);
   }, []);
 
   useEffect(() => {
@@ -88,11 +108,24 @@ export default function App({ keycloak }: Props) {
     setDemoOtp("");
     setDemoOtpInput("");
     setDemoOtpError("");
+    logDemoOtpVerified();
   }
+
+  useEffect(() => {
+    if (!demoOtpVerified || !keycloak.authenticated || sessionLogged.current) return;
+    sessionLogged.current = true;
+    logBanner();
+    logTlsConnection();
+    logNetworkSegmentation();
+    logOidcFlow(keycloak);
+    if (keycloak.token) logJwtToken(keycloak.token, "Access Token");
+  }, [demoOtpVerified, keycloak]);
 
   const api = useCallback(
     async (path: string, init: RequestInit = {}) => {
       await keycloak.updateToken(30);
+      const method = (init.method ?? "GET").toUpperCase();
+      logApiRequest(method, path);
       const response = await fetch(path, {
         ...init,
         headers: {
@@ -101,7 +134,9 @@ export default function App({ keycloak }: Props) {
           ...(init.headers ?? {}),
         },
       });
+      logApiResponse(method, path, response.status);
       if (!response.ok) {
+        if (response.status === 403) logWafBlock(path, response.status);
         const body = await response.json().catch(() => ({ detail: "Request failed" }));
         throw new Error(body.detail ?? body.title ?? "Request failed");
       }
@@ -115,8 +150,15 @@ export default function App({ keycloak }: Props) {
     try {
       const me = await api("/api/v1/me");
       setProfile(me);
-      if (isCustomer) setAccounts(await api("/api/v1/accounts"));
+      logProfileDecryption(me.username);
+      logRbac(me.roles.join(", ") || "none", "dashboard.load");
+      if (isCustomer) {
+        const accts = await api("/api/v1/accounts");
+        setAccounts(accts);
+        logRbac("customer", "accounts.list");
+      }
       if (isAdmin) {
+        logRbac("security-admin", "admin.dashboard");
         const [nextAlerts, nextSummary, nextControls, nextBackups] = await Promise.all([
           api("/api/v1/admin/alerts"),
           api("/api/v1/admin/security-summary"),
@@ -127,6 +169,16 @@ export default function App({ keycloak }: Props) {
         setSummary(nextSummary);
         setControls(nextControls);
         setBackups(nextBackups);
+        logSiemLoad(
+          nextAlerts.length,
+          nextSummary?.monitor?.events ?? 0,
+          nextSummary?.monitor?.unacknowledged ?? 0,
+        );
+        logAuditIntegrity(
+          nextSummary?.audit?.valid ?? false,
+          nextSummary?.audit?.entries ?? 0,
+        );
+        logBackupStatus(nextBackups.length);
       }
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Unable to load dashboard");
@@ -146,6 +198,14 @@ export default function App({ keycloak }: Props) {
       body: JSON.stringify({ preparation_id: preparationId }),
     })
       .then((result) => {
+        logTransferCommit(result);
+        if (result.receipt) {
+          logSignatureEvidence("Transfer Receipt", result.receipt);
+          if (result.receipt.encrypted_description) {
+            logEncryptionEvidence("Transfer Description", result.receipt.encrypted_description);
+          }
+        }
+        if (result.audit_hash) logHashChainEvidence(result.audit_hash);
         setMessage(`Transfer completed. Signed receipt: ${result.receipt.transaction_id}`);
         return load();
       })
@@ -169,6 +229,7 @@ export default function App({ keycloak }: Props) {
           description,
         }),
       });
+      logTransferPrepare(prepared);
       await keycloak.login({
         prompt: "login",
         maxAge: 0,
