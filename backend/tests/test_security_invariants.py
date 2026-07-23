@@ -1,7 +1,8 @@
+import os
 from pathlib import Path
 
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(os.environ.get("PROJECT_ROOT", Path(__file__).resolve().parents[2]))
 
 
 def test_no_secret_material_is_committed():
@@ -22,4 +23,3 @@ def test_vulnerable_lab_has_no_secure_volume_mounts():
 def test_only_gateway_publishes_the_public_https_port():
     compose = (ROOT / "compose.yaml").read_text(encoding="utf-8")
     assert compose.count("${PUBLIC_HTTPS_PORT:-8443}:8443") == 1
-

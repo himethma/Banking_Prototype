@@ -507,7 +507,10 @@ services:
     image: secure-bank-tests:local
     profiles: [tools]
     command: [pytest, -q, --disable-warnings]
+    environment:
+      PROJECT_ROOT: /workspace
     volumes:
+      - ./:/workspace:ro
       - certs:/certs:ro
       - secrets:/run/secrets:ro
     networks:

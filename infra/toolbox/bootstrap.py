@@ -33,6 +33,14 @@ def atomic_write(path: Path, data: bytes, mode: int = 0o444) -> None:
     temp.replace(path)
 
 
+def assign_backup_key_to_runtime() -> None:
+    key_path = BOOTSTRAP / "backup_ssh_key"
+    if not key_path.exists():
+        raise SystemExit("Run setup first.")
+    os.chmod(key_path, stat.S_IRUSR)
+    os.chown(key_path, 10001, 10001)
+
+
 def password() -> str:
     return secrets.token_urlsafe(24)
 
@@ -326,6 +334,7 @@ def setup() -> None:
         ),
         0o400,
     )
+    assign_backup_key_to_runtime()
     atomic_write(
         BOOTSTRAP / "backup_ssh_key.pub",
         ssh_key.public_key().public_bytes(
@@ -414,6 +423,11 @@ def refresh_realm() -> None:
     print("Refreshed Keycloak realm bootstrap configuration.")
 
 
+def repair_permissions() -> None:
+    assign_backup_key_to_runtime()
+    print("Repaired non-root backup key ownership.")
+
+
 def tls_probe(host: str, port: int, minimum: ssl.TLSVersion, maximum: ssl.TLSVersion, with_client: bool = False) -> str:
     context = ssl.create_default_context(cafile=str(CERTS / "ca.crt"))
     context.minimum_version = minimum
@@ -422,7 +436,17 @@ def tls_probe(host: str, port: int, minimum: ssl.TLSVersion, maximum: ssl.TLSVer
         context.load_cert_chain(CERTS / "api.crt", CERTS / "api.key")
     with socket.create_connection((host, port), timeout=5) as raw:
         with context.wrap_socket(raw, server_hostname=host) as secured:
-            return secured.version() or "unknown"
+            version = secured.version() or "unknown"
+            request = (
+                f"GET /healthz HTTP/1.1\r\nHost: {host}\r\n"
+                "Connection: close\r\n\r\n"
+            ).encode()
+            secured.sendall(request)
+            response = secured.recv(256)
+            status_line = response.split(b"\r\n", 1)[0]
+            if b" 200 " not in status_line:
+                raise OSError(f"TLS endpoint health check failed: {status_line!r}")
+            return version
 
 
 def protocol_check() -> None:
@@ -493,6 +517,8 @@ def main() -> None:
         setup()
     elif command == "refresh-realm":
         refresh_realm()
+    elif command == "repair-permissions":
+        repair_permissions()
     elif command == "export-ca":
         export_ca()
     elif command == "protocol-check":

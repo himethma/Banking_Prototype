@@ -7,7 +7,9 @@ mode="${SSH_MODE:-sftp}"
 if ! id "$user_name" >/dev/null 2>&1; then
   adduser -D -u 10001 -h "/home/$user_name" -s /bin/ash "$user_name"
 fi
-passwd -l "$user_name" >/dev/null 2>&1 || true
+# Keep the account eligible for public-key authentication. Password login remains
+# impossible because sshd disables it and rejects empty passwords below.
+passwd -d "$user_name" >/dev/null 2>&1
 mkdir -p "/home/$user_name/.ssh"
 cp /bootstrap/backup_ssh_key.pub "/home/$user_name/.ssh/authorized_keys"
 chmod 0700 "/home/$user_name/.ssh"
