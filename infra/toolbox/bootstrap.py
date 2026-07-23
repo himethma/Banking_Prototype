@@ -200,15 +200,6 @@ def build_realm(credentials: dict[str, str], ids: dict[str, str]) -> dict:
         "maxFailureWaitSeconds": 900,
         "maxDeltaTimeSeconds": 43200,
         "permanentLockout": False,
-        "otpPolicyType": "totp",
-        # HMAC-SHA1 is the interoperable RFC 6238 profile used by Microsoft
-        # Authenticator and other generic TOTP applications. TOTP security
-        # comes from the random secret, short time step, MFA enforcement, and
-        # online rate limiting; this is not a use of SHA-1 for signatures.
-        "otpPolicyAlgorithm": "HmacSHA1",
-        "otpPolicyDigits": 6,
-        "otpPolicyPeriod": 30,
-        "otpPolicyLookAheadWindow": 1,
         "passwordPolicy": "length(12) and digits(1) and upperCase(1) and lowerCase(1)",
         "defaultSignatureAlgorithm": "ES384",
         "accessTokenLifespan": 300,

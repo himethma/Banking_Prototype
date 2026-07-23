@@ -123,7 +123,7 @@ docker compose restart api-a api-b
 docker compose down
 ```
 
-To completely reset all synthetic data, keys, credentials, TOTP enrollments, audit entries, and backups, run `docker compose down -v`, remove `.local`, and run setup again. This is destructive by design and should only be used for the coursework environment.
+To completely reset all synthetic data, keys, credentials, audit entries, and backups, run `docker compose down -v`, remove `.local`, and run setup again. This is destructive by design and should only be used for the coursework environment.
 
 ## Honest prototype boundaries
 
