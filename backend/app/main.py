@@ -538,6 +538,69 @@ async def admin_audit(admin: SecurityAdmin) -> list:
     return await internal_get(settings.audit_service_url, "/v1/events?limit=100")
 
 
+@app.get("/api/v1/admin/transfers")
+async def admin_transfers(
+    admin: SecurityAdmin,
+    session: Annotated[AsyncSession, Depends(session_dependency)],
+) -> list[dict]:
+    rows = (
+        await session.scalars(
+            select(Transaction)
+            .order_by(Transaction.created_at.desc())
+            .limit(50)
+        )
+    ).all()
+    result = []
+    for row in rows:
+        source = await session.get(Account, row.source_account_id)
+        destination = await session.get(Account, row.destination_account_id)
+        result.append(
+            {
+                "id": str(row.id),
+                "source_account": mask_account(source.account_number) if source else "unknown",
+                "destination_account": mask_account(destination.account_number) if destination else "unknown",
+                "amount_minor": row.amount_minor,
+                "currency": row.currency,
+                "request_hash": row.request_hash,
+                "created_at": row.created_at.isoformat(),
+            }
+        )
+    return result
+
+
+@app.get("/api/v1/admin/users")
+async def admin_users(
+    admin: SecurityAdmin,
+    session: Annotated[AsyncSession, Depends(session_dependency)],
+) -> list[dict]:
+    profiles = (
+        await session.scalars(
+            select(UserProfile).order_by(UserProfile.created_at)
+        )
+    ).all()
+    result = []
+    for profile in profiles:
+        account_count = await session.scalar(
+            select(func.count()).select_from(Account).where(
+                Account.owner_subject == profile.subject
+            )
+        )
+        result.append(
+            {
+                "subject": profile.subject,
+                "username": profile.username,
+                "account_count": account_count,
+                "created_at": profile.created_at.isoformat(),
+            }
+        )
+    return result
+
+
+@app.get("/api/v1/admin/events")
+async def admin_events(admin: SecurityAdmin) -> list:
+    return await internal_get(settings.monitor_service_url, "/v1/events?limit=200")
+
+
 @app.get("/api/v1/admin/audit/verify")
 async def admin_verify_audit(admin: SecurityAdmin) -> dict:
     result = await internal_get(settings.audit_service_url, "/v1/verify")

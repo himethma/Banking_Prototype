@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } fro
 import type Keycloak from "keycloak-js";
 import {
   Activity,
+  ArrowLeftRight,
   ArrowRight,
   BadgeCheck,
   Banknote,
@@ -9,10 +10,13 @@ import {
   Fingerprint,
   LockKeyhole,
   LogOut,
+  Radio,
   RefreshCw,
+  ScrollText,
   ShieldCheck,
   Siren,
   UserRound,
+  Users,
 } from "lucide-react";
 import {
   logApiRequest,
@@ -46,6 +50,10 @@ type Account = {
 };
 type Profile = { full_name: string; username: string; email: string; roles: string[] };
 type Alert = { id: string; severity: string; title: string; actor: string; created_at: string; acknowledged: number };
+type AdminTransfer = { id: string; source_account: string; destination_account: string; amount_minor: number; currency: string; request_hash: string; created_at: string };
+type AdminUser = { subject: string; username: string; account_count: number; created_at: string };
+type AuditEntry = { sequence: number; id: string; occurred_at: string; actor: string; action: string; outcome: string; details: string; entry_hash: string };
+type SecurityEvent = { id: string; occurred_at: string; event_type: string; actor: string; source_ip: string; details: string };
 type Props = { keycloak: Keycloak };
 
 function money(minor: number) {
@@ -59,6 +67,10 @@ export default function App({ keycloak }: Props) {
   const [summary, setSummary] = useState<any>(null);
   const [controls, setControls] = useState<any>(null);
   const [backups, setBackups] = useState<any[]>([]);
+  const [adminTransfers, setAdminTransfers] = useState<AdminTransfer[]>([]);
+  const [adminUsers, setAdminUsers] = useState<AdminUser[]>([]);
+  const [auditLog, setAuditLog] = useState<AuditEntry[]>([]);
+  const [securityEvents, setSecurityEvents] = useState<SecurityEvent[]>([]);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -159,16 +171,24 @@ export default function App({ keycloak }: Props) {
       }
       if (isAdmin) {
         logRbac("security-admin", "admin.dashboard");
-        const [nextAlerts, nextSummary, nextControls, nextBackups] = await Promise.all([
+        const [nextAlerts, nextSummary, nextControls, nextBackups, nextTransfers, nextUsers, nextAudit, nextEvents] = await Promise.all([
           api("/api/v1/admin/alerts"),
           api("/api/v1/admin/security-summary"),
           api("/api/v1/admin/controls"),
           api("/api/v1/admin/backups"),
+          api("/api/v1/admin/transfers"),
+          api("/api/v1/admin/users"),
+          api("/api/v1/admin/audit"),
+          api("/api/v1/admin/events"),
         ]);
         setAlerts(nextAlerts);
         setSummary(nextSummary);
         setControls(nextControls);
         setBackups(nextBackups);
+        setAdminTransfers(nextTransfers);
+        setAdminUsers(nextUsers);
+        setAuditLog(nextAudit);
+        setSecurityEvents(nextEvents);
         logSiemLoad(
           nextAlerts.length,
           nextSummary?.monitor?.events ?? 0,
@@ -341,6 +361,83 @@ export default function App({ keycloak }: Props) {
               <article className="panel"><div className="panel-title"><div><p className="eyebrow">TRUST CONTROLS</p><h2>Implementation coverage</h2></div><ShieldCheck /></div>{controls && ["algorithm", "protocol", "system"].map((group) => <div className="control-group" key={group}><h3>{group}</h3>{controls[group].map((item: string) => <div className="evidence-row" key={item}><BadgeCheck />{item}</div>)}</div>)}</article>
             </section>
             <section className="panel lab-panel"><div><p className="eyebrow">ISOLATED SECURITY LAB</p><h2>Secure versus vulnerable evidence</h2><p>The lab is disabled in normal operation and uses a separate network, synthetic database, and no banking secrets.</p></div><code>docker compose --profile lab run --rm attack-runner</code></section>
+
+            <section className="detail-grid">
+              <article className="panel">
+                <div className="panel-title"><div><p className="eyebrow">TRANSFERS</p><h2>Recent transfers</h2></div><ArrowLeftRight /></div>
+                <div className="scroll-body">
+                  {adminTransfers.length === 0 ? <div className="empty">No transfers recorded yet. Complete a transfer as a customer to see data here.</div> : (
+                    <table className="admin-table">
+                      <thead><tr><th>Time</th><th>Route</th><th>Amount</th><th>Txn ID</th></tr></thead>
+                      <tbody>
+                        {adminTransfers.map((t) => <tr key={t.id}>
+                          <td>{new Date(t.created_at).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}</td>
+                          <td>{t.source_account}<span className="dir-arrow">→</span>{t.destination_account}</td>
+                          <td className="amount">{money(t.amount_minor)}</td>
+                          <td className="hash">{t.id.slice(0, 8)}…</td>
+                        </tr>)}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+              </article>
+
+              <article className="panel">
+                <div className="panel-title"><div><p className="eyebrow">DIRECTORY</p><h2>Registered users</h2></div><Users /></div>
+                <div className="scroll-body">
+                  {adminUsers.length === 0 ? <div className="empty">No users registered.</div> : adminUsers.map((u) => (
+                    <div className="user-row" key={u.subject}>
+                      <div className="user-avatar"><UserRound size={18} /></div>
+                      <div className="user-info"><strong>{u.username}</strong><small>{u.subject.slice(0, 12)}…</small></div>
+                      <div className="user-badge"><strong>{u.account_count}</strong>{u.account_count === 1 ? "account" : "accounts"}</div>
+                    </div>
+                  ))}
+                </div>
+              </article>
+            </section>
+
+            <section className="detail-grid">
+              <article className="panel">
+                <div className="panel-title"><div><p className="eyebrow">IMMUTABLE AUDIT</p><h2>Audit trail</h2></div><ScrollText /></div>
+                <div className="scroll-body">
+                  {auditLog.length === 0 ? <div className="empty">No audit entries yet.</div> : (
+                    <ul className="event-feed">
+                      {auditLog.map((entry) => (
+                        <li className="event-item" key={entry.id}>
+                          <div className="event-top">
+                            <span className="seq-num">#{entry.sequence}</span>
+                            <span className="tag outcome-success">{entry.action}</span>
+                            <span style={{ color: "var(--ink)" }}>{entry.actor.slice(0, 12)}…</span>
+                          </div>
+                          <span className="hash">{entry.entry_hash.slice(0, 16)}…</span>
+                          <div className="event-meta">{new Date(entry.occurred_at).toLocaleString()} · {entry.outcome}</div>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              </article>
+
+              <article className="panel">
+                <div className="panel-title"><div><p className="eyebrow">IDS / SIEM</p><h2>Security events</h2></div><Radio /></div>
+                <div className="scroll-body">
+                  {securityEvents.length === 0 ? <div className="empty">No security events recorded yet.</div> : (
+                    <ul className="event-feed">
+                      {securityEvents.map((ev) => (
+                        <li className="event-item" key={ev.id}>
+                          <div className="event-top">
+                            <span className={`tag type-${ev.event_type.split(".")[0]}`}>{ev.event_type}</span>
+                            <span style={{ color: "var(--ink)" }}>{ev.actor === "anonymous" ? "system" : ev.actor.slice(0, 12) + "…"}</span>
+                          </div>
+                          <span className="hash">{ev.source_ip}</span>
+                          <div className="event-meta">{new Date(ev.occurred_at).toLocaleString()}</div>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              </article>
+            </section>
           </>
         )}
       </main>
