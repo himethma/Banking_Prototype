@@ -84,7 +84,13 @@ def main() -> None:
     print("=" * 88)
     for item in attacks:
         outcome = "PASS" if item["secure_blocked"] and item["vulnerable_exploited"] else "FAIL"
-        print(f"{outcome:4}  {item['attack']:<36} secure={item['secure_status']} vulnerable={item['vulnerable_status']}")
+        secure_label = "blocked" if item["secure_blocked"] else "allowed"
+        vulnerable_label = "exploited" if item["vulnerable_exploited"] else "contained"
+        print(
+            f"{outcome:4}  {item['attack']:<36} "
+            f"secure={item['secure_status']} [{secure_label}] "
+            f"vulnerable={item['vulnerable_status']} [{vulnerable_label}]"
+        )
     print("=" * 88)
     print(json.dumps({"passed": passed, "evidence": "/results/latest.json"}))
     raise SystemExit(0 if passed else 1)

@@ -299,7 +299,7 @@ Run:
 docker compose --profile lab run --rm attack-runner
 ```
 
-Read one complete blocked-versus-exploited result, then summarize:
+Point to the PASS rows and their comparison labels, then summarize:
 
 - SQL injection
 - Stored XSS
@@ -312,7 +312,7 @@ Read one complete blocked-versus-exploited result, then summarize:
 
 > This next test makes the difference easier to see. We send the same attack to the protected application and to a deliberately vulnerable test application.
 >
-> For example, this SQL injection attempt is blocked on the secure side but works against the vulnerable side. The runner repeats that comparison for stored XSS, IDOR, token tampering, replay, and brute force.
+> For example, the output now shows each attack as a PASS row with `secure=... [blocked]` and `vulnerable=... [exploited]`. The runner repeats that comparison for stored XSS, IDOR, token tampering, replay, and brute force.
 >
 > The vulnerable application is isolated from the banking system and contains only synthetic data. It is there purely so we can show the before-and-after difference safely.
 
