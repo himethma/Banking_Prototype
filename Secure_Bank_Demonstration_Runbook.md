@@ -429,14 +429,14 @@ Run:
 docker compose --profile restore run --rm restore-check
 ```
 
-Point to:
+Point to the PASS rows and summarize the recovery stages:
 
-- Valid ECDSA manifest signature
-- Matching SHA-256 ciphertext digest
-- Wrapped AES data key
-- Valid GCM authentication tag
+- ECDSA manifest signature
 - Primary and DR copies
-- Successful disposable PostgreSQL restore and query
+- SHA-256 ciphertext digest
+- Wrapped AES data key
+- GCM authentication tag
+- Disposable PostgreSQL restore and query
 
 **SAY**
 
@@ -444,7 +444,7 @@ Point to:
 >
 > Each database backup is encrypted with a fresh AES-256-GCM data key. That key is wrapped by the key-management service, and the manifest is signed so we can verify where the backup came from.
 >
-> The encrypted backup is copied to the primary and DR stores using key-only SFTP. During this test, we verify the signature and digest, unwrap the key, check the GCM authentication tag, and restore the database into a temporary container. The final query is the important part, because it proves the recovered database is actually usable.
+> The output now shows the manifest signature, the primary and DR copies, the ciphertext digest, the wrapped key, the GCM authentication tag, and the disposable restore as separate PASS rows. During this test, we verify each stage, then restore the database into a temporary container and run a query against it.
 
 **EXPECT**
 

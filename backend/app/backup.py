@@ -145,46 +145,95 @@ async def create_backup() -> dict:
 async def restore_check() -> dict:
     with tempfile.TemporaryDirectory() as temp_dir:
         directory = Path(temp_dir)
-        manifest_path, encrypted_path = await asyncio.to_thread(
+        primary_manifest_path, primary_encrypted_path = await asyncio.to_thread(
             sftp_download_latest, "sftp-primary", directory
         )
-        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        dr_manifest_path, dr_encrypted_path = await asyncio.to_thread(
+            sftp_download_latest, "sftp-dr", directory
+        )
+
+        manifest = json.loads(primary_manifest_path.read_text(encoding="utf-8"))
         unsigned = {k: v for k, v in manifest.items() if k not in {"signature", "signature_algorithm"}}
-        if not await verify_bytes(
-            canonical_json(unsigned), manifest["signature"], manifest["key_version"]
-        ):
+        stage_results: list[tuple[str, bool, str]] = []
+
+        if not await verify_bytes(canonical_json(unsigned), manifest["signature"], manifest["key_version"]):
             await security_event("backup.invalid", actor="restore-check", details={"reason": "signature"})
             raise RuntimeError("Backup manifest signature is invalid")
-        ciphertext = encrypted_path.read_bytes()
+        stage_results.append(("ECDSA manifest signature", True, "valid"))
+
+        primary_ciphertext = primary_encrypted_path.read_bytes()
+        dr_manifest = json.loads(dr_manifest_path.read_text(encoding="utf-8"))
+        dr_ciphertext = dr_encrypted_path.read_bytes()
+        if dr_manifest != manifest:
+            raise RuntimeError("Primary and DR manifests do not match")
+        if primary_ciphertext != dr_ciphertext:
+            raise RuntimeError("Primary and DR ciphertext copies do not match")
+        stage_results.append(("Primary and DR copies", True, "matched"))
+
+        ciphertext = primary_ciphertext
         if hashlib.sha256(ciphertext).hexdigest() != manifest["ciphertext_sha256"]:
             await security_event("backup.invalid", actor="restore-check", details={"reason": "hash"})
             raise RuntimeError("Encrypted backup hash is invalid")
+        stage_results.append(("SHA-256 ciphertext digest", True, "matched"))
+
         unwrapped = await internal_post(
             settings.key_service_url,
             "/v1/unwrap-key",
             {"key": manifest["wrapped_key"], "key_version": manifest["key_version"]},
         )
         data_key = base64.urlsafe_b64decode(unwrapped["key"])
+        stage_results.append(("Wrapped AES data key", True, "wrapped and unwrapped"))
+
         plaintext = AESGCM(data_key).decrypt(
             base64.urlsafe_b64decode(manifest["nonce"]),
             ciphertext,
             manifest["associated_data"].encode(),
         )
+        stage_results.append(("GCM authentication tag", True, "verified"))
+
         dump_path = directory / "verified.dump"
         dump_path.write_bytes(plaintext)
         admin_password = read_file_env("DB_ADMIN_PASSWORD")
         admin_url = sync_database_url("banking_root", admin_password, "postgres")
         restore_url = sync_database_url("banking_root", admin_password, "restore_validation")
         subprocess.run(
-            ["psql", admin_url, "-v", "ON_ERROR_STOP=1", "-c", "DROP DATABASE IF EXISTS restore_validation WITH (FORCE)", "-c", "CREATE DATABASE restore_validation"],
+            [
+                "psql",
+                admin_url,
+                "-v",
+                "ON_ERROR_STOP=1",
+                "-c",
+                "DROP DATABASE IF EXISTS restore_validation WITH (FORCE)",
+                "-c",
+                "CREATE DATABASE restore_validation",
+            ],
             check=True,
             env=pg_environment(),
             capture_output=True,
         )
         subprocess.run(["pg_restore", "--no-owner", "--dbname", restore_url, str(dump_path)], check=True, env=pg_environment(), capture_output=True)
-        check = subprocess.run(["psql", restore_url, "-tAc", "SELECT COUNT(*) FROM accounts"], check=True, env=pg_environment(), capture_output=True, text=True)
-        subprocess.run(["psql", admin_url, "-v", "ON_ERROR_STOP=1", "-c", "DROP DATABASE restore_validation WITH (FORCE)"], check=True, env=pg_environment(), capture_output=True)
+        check = subprocess.run(
+            ["psql", restore_url, "-tAc", "SELECT COUNT(*) FROM accounts"],
+            check=True,
+            env=pg_environment(),
+            capture_output=True,
+            text=True,
+        )
+        subprocess.run(
+            ["psql", admin_url, "-v", "ON_ERROR_STOP=1", "-c", "DROP DATABASE restore_validation WITH (FORCE)"],
+            check=True,
+            env=pg_environment(),
+            capture_output=True,
+        )
+        stage_results.append(("Disposable PostgreSQL restore and query", True, check.stdout.strip()))
+
     result = {"valid": True, "backup_id": manifest["backup_id"], "accounts": int(check.stdout.strip())}
+    print("\nSECURE BANK RESTORE CHECK")
+    print("=" * 88)
+    for label, passed, detail in stage_results:
+        outcome = "PASS" if passed else "FAIL"
+        print(f"{outcome:4}  {label:<36} {detail}")
+    print("=" * 88)
     print(json.dumps(result, indent=2))
     return result
 
