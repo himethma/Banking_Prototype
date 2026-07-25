@@ -507,7 +507,7 @@ services:
       target: test
     image: secure-bank-tests:local
     profiles: [tools]
-    command: [pytest, -q, --disable-warnings]
+    command: [pytest, -vv, --disable-warnings, -rA]
     environment:
       PROJECT_ROOT: /workspace
     volumes:

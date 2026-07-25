@@ -26,7 +26,7 @@ Run:
 docker compose run --rm test-runner
 ```
 
-Highlight the AES round trip, unique nonces, wrong-key/AAD/ciphertext rejection, ECDSA tamper rejection, and hash-chain tests.
+Point to the test-name lines for the AES round trip, unique nonces, wrong-key/AAD/ciphertext rejection, ECDSA tamper rejection, and hash-chain tests.
 
 ## 4. Show protocol evidence
 

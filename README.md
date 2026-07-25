@@ -63,6 +63,8 @@ Run unit and invariant tests:
 docker compose run --rm test-runner
 ```
 
+The runner prints each test name and result so you can point to the AES, nonce, tamper-rejection, signature, and hash-chain checks directly.
+
 Prove TLS 1.3, TLS 1.2 rejection, mTLS, PostgreSQL TLS, SMTP STARTTLS, and SFTP key-only authentication:
 
 ```text
