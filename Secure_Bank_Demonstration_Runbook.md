@@ -90,7 +90,7 @@ Show the cover slide. Pause briefly on the layered-security image.
 
 **SAY**
 
-> For CW1, we designed a layered security architecture for an online bank. For this prototype, we wanted to go beyond just showing the diagram. We built the main controls, tested what happens when someone tries to bypass them, and made the results visible.
+> So for CW1, we built a layered security architecture for an online bank. But we didn't just want to show you a diagram — we wanted to prove it actually holds up. So we built the core controls ourselves, tried to break them, and we're going to show you exactly what happened.
 
 ### 0:30–1:10 — Frame the three layers
 
@@ -102,7 +102,8 @@ Trace the single transaction path from the browser to the database and audit evi
 
 **SAY**
 
-> Rather than explaining every box separately, we are going to follow one test transaction through the system. First, we will look at how the data is encrypted and signed. Then we will check the connections between services. Finally, we will show the monitoring and recovery side.
+> Instead of walking through every box on this diagram one by one, we're going to follow a single test transaction as it moves through the system. We'll start with how the data gets encrypted and signed, then look at how the connections between services are secured, and finish up with monitoring and recovery.
+
 
 ### 1:10–1:35 — Explain the algorithm controls
 
@@ -114,9 +115,8 @@ Advance to slide 3. Explain the three algorithm controls before opening the live
 
 **SAY**
 
-> At the algorithm level, we use three main controls. AES-256-GCM protects sensitive data and also detects tampering. ECDSA P-384 signs receipts and other evidence. SHA-256 links the audit records together so a missing or changed record can be detected.
->
-> We will now leave the slides and show these controls through a real transfer and the automated negative tests.
+> At the algorithm level, there are three main controls we're relying on. AES-256-GCM protects sensitive data and also catches any tampering. ECDSA P-384 signs our receipts and other evidence. And SHA-256 chains the audit records together, so if oneever goes missing or gets changed, we'll know.
+>Let's step away from the slides now and show you these controls in action — first with areal transfer, then with our automated negative tests.
 
 **SWITCH**
 
@@ -140,13 +140,11 @@ Change from the slide deck to the regular laptop screen. Wait until the customer
 
 **SAY**
 
-> I am signing in as Alice, who has the customer role. The login uses OpenID Connect with authorization code and PKCE.
+> I'll sign in as Alice — she's got the customer role. She logs in through OpenID Connect,authorization code flow with PKCE, and then there's a one-time code. For this prototype, that code just pops up in the browser console — quick heads-up, that's not real MFA, just showing the flow.
 >
-> You can see that the application asks for a one-time code as a second step. For this prototype, that code appears in the browser console. We want to be clear that this is only a demonstration of the flow, not production-ready MFA.
+>Now let's send Bob a thousand rupees. Before it goes through, the API double-checksAlice owns the account, has enough balance, and is within her limits — then makes herre-enter her password before the money actually moves.
 >
-> Now I am sending one thousand rupees to Bob. Before the transfer is accepted, the API checks that Alice owns the account, that the balance is enough, and that the transfer is within the limits. It also asks Alice to sign in again before the money is moved.
->
-> Once I confirm it, the balance changes only once. We use database row locks and an idempotency key, so refreshing or replaying the request should not create a second debit. Behind the interface, the description is encrypted with AES-256-GCM and the receipt is signed using ECDSA P-384.
+>Once I confirm, the balance updates exactly once. We're using row locks and anidempotency key, so refreshing or resending never double-charges. And under theood, the description's encrypted with AES-256-GCM, receipt signed with ECDSA P384.
 
 **EXPECT**
 
@@ -181,9 +179,9 @@ Point to the test-name lines and their PASS statuses:
 
 **SAY**
 
-> Getting the original data back after encryption is the easy test. What matters more is what happens when something is wrong.
->
-> Here, the test output shows the AES round trip, unique nonces, tampering rejection, signature rejection, and hash-chain checks as separate passing cases. So we are testing the failure cases, not just the successful case.
+> Getting your data back after encryption — that part's easy. What really matters is whathappens when something goes wrong.
+
+>You can see the test output here covers the AES round trip, unique nonces, tamperingrejection, signature rejection, and the hash-chain check, each as its own passing test.So we're not just testing that it works — we're testing that it fails safely too.
 
 **FALLBACK**
 
@@ -197,7 +195,7 @@ Leave the terminal result visible and pass control to Presenter 2.
 
 **SAY**
 
-> So that covers the algorithm layer around the transaction itself. We will switch back to the slides for a moment, and Presenter 2 will explain how the connections between services are protected.
+> So that's the algorithm layer around the transaction covered. We'll jump back to theslides for a second, and Presenter 2 is going to take you through how the connectionsbetween our services are protected.
 
 **SWITCH**
 
@@ -219,9 +217,9 @@ Trace the path across slide 4 while the audience can see it.
 
 **SAY**
 
-> This slide shows the main connections we are about to test. The browser reaches the public edge through TLS 1.3. Inside the system, the services use mutual TLS, the database verifies its encrypted connection, mail upgrades with STARTTLS, and file transfers use SFTP with keys rather than passwords.
+> This slide shows the main connections we are going to test. The browser connects to the public system using TLS 1.3. Inside the system, services communicate through mutual TLS, the database uses a verified encrypted connection, email upgrades using STARTTLS, and files are transferred through SFTP using security keys instead of passwords.
 >
-> The important part is that we also test the connections that should fail, including an older TLS version, anonymous access to the key service, and password-based SFTP.
+>We also test connections that should be rejected, such as an older TLS version, anonymous access to the key service, and password-based SFTP login.
 
 **SWITCH**
 
@@ -251,11 +249,11 @@ Point to each success and rejection pair:
 
 **SAY**
 
-> I am now running our protocol checker. The first thing it proves is that the public site accepts TLS 1.3, while the older TLS 1.2 connection is rejected.
+> I am now running our protocol checker. First, it confirms that the public website accepts TLS 1.3, while the older TLS 1.2 connection is blocked.
 >
-> Inside the system, the services use mutual TLS. So if an anonymous client tries to call the key service, it is denied, but the properly authenticated service is allowed.
+>Inside the system, the services use mutual TLS. This means an anonymous client cannot access the key service, but a properly authenticated service is allowed.
 >
-> We also check the other paths rather than assuming they are secure. PostgreSQL verifies its TLS certificate, the local mail service upgrades with STARTTLS, and SFTP accepts the Ed25519 key but rejects password login. Each connection has its own clear rule for identity and encryption.
+>We also test the other connections instead of simply assuming they are secure. PostgreSQL verifies its TLS certificate, the local mail service upgrades using STARTTLS, and SFTP accepts the Ed25519 key but rejects password login. Each connection has a clear rule for authentication and encryption.
 
 **EXPECT**
 
@@ -279,10 +277,9 @@ Explain the two sides of the comparison before running the attack lab.
 
 **SAY**
 
-> For the next part, we run the same test attacks against two targets. One is our protected application. The other is a deliberately vulnerable application made only for this comparison.
+> For the next part, we test the same attacks on two applications. One is our protected application, and the other is a deliberately vulnerable application created only for this comparison.
 >
-> On the secure side, every attack should be blocked. On the vulnerable side, the same input should succeed. We will now switch back to the laptop and run that comparison.
-
+>In the secure application, every attack should be blocked. In the vulnerable application, the same attack should succeed. We will now switch back to the laptop and run the comparison.
 **SWITCH**
 
 Change from slide 5 to the attack-runner terminal.
@@ -310,11 +307,11 @@ Point to the PASS rows and their comparison labels, then summarize:
 
 **SAY**
 
-> This next test makes the difference easier to see. We send the same attack to the protected application and to a deliberately vulnerable test application.
+> This next test makes the difference easier to understand. We send the same attack to both our protected application and a deliberately vulnerable test application.
 >
-> For example, the output now shows each attack as a PASS row with `secure=... [blocked]` and `vulnerable=... [exploited]`. The runner repeats that comparison for stored XSS, IDOR, token tampering, replay, and brute force.
+>The results show each attack as a PASS, with `secure=... [blocked]` and `vulnerable=... [exploited]`. The test repeats this comparison for stored XSS, IDOR, token tampering, replay attacks, and brute-force attacks.
 >
-> The vulnerable application is isolated from the banking system and contains only synthetic data. It is there purely so we can show the before-and-after difference safely.
+>The vulnerable application is completely separate from the banking system and uses only fake test data. It is included only to show the difference safely.
 
 **EXPECT**
 
@@ -332,7 +329,7 @@ Leave the secure-versus-vulnerable result visible and pass control to Presenter 
 
 **SAY**
 
-> At this point, we know the secure path rejects the attacks. We will switch back to the slides, and Presenter 3 will explain what the system records and how we recover if something still goes wrong.
+> At this point, we have confirmed that the secure system blocks the attacks. Gamitha will explain what the system records and how it responds if something still goes wrong.
 
 **SWITCH**
 
